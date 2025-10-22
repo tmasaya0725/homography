@@ -12,29 +12,43 @@ def safe_warp_perspective(img, H, dsize):
     return K.geometry.transform.warp_perspective(img, H, dsize)
 
 class SpatialTransformerNetwork(nn.Module):
-    def __init__(self):
+    def __init__(self, num_network=4, 
+                 input_channels=1, hidden_layers=[16, 32], 
+                 kernel_size=[3, 3], stride=[2, 2], padding=[1, 1],
+                 fc_hidden_size=32, fc_output_size=8):
         super().__init__()
 
-        # Localization network パラメータを求めるためのエンコーダ
-        self.localization = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=7),
-            nn.MaxPool2d(2, stride=2),
-            nn.ReLU(True),
-            nn.Conv2d(8, 10, kernel_size=5),
-            nn.MaxPool2d(2, stride=2),
-            nn.ReLU(True)
-        )
+        self.encoder_list = nn.ModuleList()
+        self.fc_loc_list = nn.ModuleList()
 
-        # homography変換のパラメータ（8自由度：H[2,2]=1に固定）を出力するための全結合層
-        self.fc_loc = nn.Sequential(
-            nn.Linear(10 * 3 * 3, 32),
-            nn.ReLU(True),
-            nn.Linear(32, 8)
-        )
-        
-        # 残差パラメータ化のため、最終層をゼロ初期化（出力=0 -> H=I）
-        self.fc_loc[2].weight.data.zero_()
-        self.fc_loc[2].bias.data.zero_()
+        for _ in range(num_network):
+            # Localization network パラメータを求めるためのエンコーダ
+            encoder = nn.Sequential()
+            for i in range(len(hidden_layers)):
+                in_channels = input_channels if i == 0 else hidden_layers[i - 1]
+                out_channels = hidden_layers[i]
+                if stride[i] > 0:
+                    encoder.add_module(
+                        nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size[i], stride=stride[i], padding=padding[i])
+                    )
+                else:
+                    encoder.add_module(
+                        nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size[i], padding=padding[i])
+                    )
+                encoder.add_module(f'act{i+1}', nn.SiLU(True))
+            encoder.add_module(nn.AdaptiveAvgPool2d((1, 1)))
+            self.encoder_list.append(encoder)
+
+            # homography変換のパラメータ（8自由度：H[2,2]=1に固定）を出力するための全結合層
+            fc_loc = nn.Sequential(
+                nn.Linear(hidden_layers[-1], fc_output_size)
+            )
+
+            # 残差パラメータ化のため、最終層をゼロ初期化（出力=0 -> H=I）
+            fc_loc[2].weight.data.zero_()
+            fc_loc[2].bias.data.zero_()
+            
+            self.fc_loc_list.append(fc_loc)
 
         # 変換の安全範囲（tanh後にスケーリング）
         # 対角・オフ対角の線形項の最大残差量
@@ -77,16 +91,21 @@ class SpatialTransformerNetwork(nn.Module):
 
         theta = I
 
-        x = safe_warp_perspective(x, theta, (x.size(3), x.size(2)))
+        x = K.geometry.transform.warp_perspective(x, theta, (x.size(3), x.size(2)))
 
         return x
     
-
+import yaml
 if __name__ == "__main__":
-    stn = SpatialTransformerNetwork()
-    # stn = torch.compile(stn)
-    input_dummy = torch.randn(1, 1, 28, 28)
-    writer = SummaryWriter(comment=f'STN_tutorial')
-    writer.add_graph(stn, input_dummy)
-    writer.close()
+    # stn = SpatialTransformerNetwork()
+    # # stn = torch.compile(stn)
+    # input_dummy = torch.randn(1, 1, 28, 28)
+    # writer = SummaryWriter(comment=f'STN_tutorial')
+    # writer.add_graph(stn, input_dummy)
+    # writer.close()
+    config_path = "config.yaml"
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
     
+    model_params = config["model"]["params"]
+    model = SpatialTransformerNetwork(**model_params)
