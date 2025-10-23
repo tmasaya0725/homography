@@ -137,7 +137,7 @@ urllib.request.install_opener(opener)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-config_path = "config.yaml"
+config_path = "../config/config.yaml"
 with open(config_path, "r") as f:
     config = yaml.safe_load(f)
 

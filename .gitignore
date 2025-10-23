@@ -15,3 +15,5 @@ MNIST/
 runs/
 *.yaml
 __pycache__/
+logs/
+outputs/
