@@ -15,6 +15,7 @@ from six.moves import urllib
 import kornia as K
 import torchvision.transforms as T
 import cv2
+import yaml
 
 # Training dataset
 train_loader = torch.utils.data.DataLoader(
@@ -136,8 +137,14 @@ urllib.request.install_opener(opener)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = SpatialTransformerNetwork().to(device)
-model = torch.compile(model)
+config_path = "config.yaml"
+with open(config_path, "r") as f:
+    config = yaml.safe_load(f)
+
+model_params = config["model"]["params"]
+model = SpatialTransformerNetwork(**model_params)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = torch.compile(model).to(device)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=5.0e-4)
 

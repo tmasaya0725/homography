@@ -9,7 +9,8 @@ class SpatialTransformerNetwork(nn.Module):
     def __init__(self, num_network=4, 
                  input_channels=1, hidden_layers=[16, 32], 
                  kernel_size=[3, 3], stride=[2, 2], padding=[1, 1],
-                 fc_hidden_size=[32], fc_output_size=8):
+                 fc_hidden_size=[32], fc_output_size=8,
+                 scale_max=2.0, persp_max=0.5, trans_scale=1.0):
         super().__init__()
 
         self.encoder_list = nn.ModuleList()
@@ -35,7 +36,7 @@ class SpatialTransformerNetwork(nn.Module):
 
             # homography変換のパラメータ（8自由度：H[2,2]=1に固定）を出力するための全結合層
             fc_loc = nn.Sequential()
-            if len(hidden_layers) > 0:
+            if len(fc_hidden_size) > 0:
                 for j in range(len(fc_hidden_size)):
                     in_features = hidden_layers[-1] if j == 0 else fc_hidden_size[j - 1]
                     out_features = fc_hidden_size[j]
@@ -53,11 +54,11 @@ class SpatialTransformerNetwork(nn.Module):
 
         # 変換の安全範囲（tanh後にスケーリング）
         # 対角・オフ対角の線形項の最大残差量
-        self.scale_max: float = 2.0   # diag/off-diag に対する残差のスケール（-2..2）。I+(-2)= -1 で反転が到達可能
+        self.scale_max = scale_max   # diag/off-diag に対する残差のスケール（-2..2）。I+(-2)= -1 で反転が到達可能
         # 透視成分（下段[2,0],[2,1]）の最大残差
-        self.persp_max: float = 0.5   # 過度な遠近を抑制
+        self.persp_max = persp_max  # 過度な遠近を抑制
         # 並進は画像サイズに依存してスケール（-W..W, -H..H が到達可能）
-        self.trans_scale: float = 1.0
+        self.trans_scale = trans_scale
         
     def forward(self, x):
         B, C, H_img, W_img = x.shape
