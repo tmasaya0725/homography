@@ -1,0 +1,17 @@
+*.png
+*.jpg
+*.jpeg
+*.csv
+*.exr
+
+
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+simple.txt
+MNIST/
+runs/
+*.yaml
+__pycache__/
