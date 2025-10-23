@@ -56,7 +56,7 @@ class SpatialTransformerNetwork(nn.Module):
         # 対角・オフ対角の線形項の最大残差量
         self.scale_max = scale_max   # diag/off-diag に対する残差のスケール（-2..2）。I+(-2)= -1 で反転が到達可能
         # 透視成分（下段[2,0],[2,1]）の最大残差
-        self.persp_max = persp_max  # 過度な遠近を抑制
+        self.persp_max = persp_max   # 過度な遠近を抑制
         # 並進は画像サイズに依存してスケール（-W..W, -H..H が到達可能）
         self.trans_scale = trans_scale
         
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     # writer = SummaryWriter(comment=f'STN_tutorial')
     # writer.add_graph(stn, input_dummy)
     # writer.close()
-    config_path = "config.yaml"
+    config_path = "../config/config.yaml"
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     
