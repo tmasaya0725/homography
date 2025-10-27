@@ -1,0 +1,1 @@
+python main.py --config-path ~/workspace/homography/config/ --config-name config

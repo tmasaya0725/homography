@@ -3,12 +3,12 @@ import torch.nn as nn
 from omegaconf import DictConfig
 from hydra.utils import instantiate
 import torch
-from STN.SpatialTransformerNetwork import SpatialTransformerNetwork
+from .model.SpatialTransformerNetwork import SpatialTransformerNetwork
 
-class STNModule(pl.LightningModule):
+class STNModule_MNIST(pl.LightningModule):
     def __init__(self, model_cfg: DictConfig, optim_cfg: DictConfig):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters({"model_cfg": model_cfg, "optim_cfg": optim_cfg})
         self.model = SpatialTransformerNetwork(**model_cfg.params)
         self.criterion = nn.MSELoss()
         self.optim_cfg = optim_cfg
@@ -17,7 +17,7 @@ class STNModule(pl.LightningModule):
         return self.model(x)
     
     def step(self, batch, batch_idx): # train,valの共通のloss計算
-        src_img, tgt_img = batch
+        src_img, tgt_img = batch['source'], batch['target']
         output = self(src_img)
         loss = self.criterion(output, tgt_img)
         return loss
@@ -28,10 +28,10 @@ class STNModule(pl.LightningModule):
         
         # 画像の可視化
         if batch_idx == 0:
-            src_img, tgt_img = batch
+            src_img, tgt_img = batch['source'], batch['target']
             output = self(src_img)
             grid = torch.cat([src_img, output, tgt_img], dim=3)  # 横に結合
-            self.logger.experiment.add_images("train/comparison", grid, self.current_epoch)
+            self.logger.experiment.add_images("train/comparison", grid, self.current_epoch, sync_dist=True)
         return loss
 
     @torch.no_grad()
@@ -40,10 +40,10 @@ class STNModule(pl.LightningModule):
         self.log("val/loss", loss)
         # 画像の可視化
         if batch_idx == 0:
-            src_img, tgt_img = batch
+            src_img, tgt_img = batch['source'], batch['target']
             output = self(src_img)
             grid = torch.cat([src_img, output, tgt_img], dim=3)  # 横に結合
-            self.logger.experiment.add_images("val/comparison", grid, self.current_epoch)
+            self.logger.experiment.add_images("val/comparison", grid, self.current_epoch, sync_dist=True)
         return loss
 
     def configure_optimizers(self):

@@ -1,12 +1,16 @@
 from omegaconf import DictConfig
-from trainer.model.STNModule import STNModule
-from trainer.data.MNISTDataModule import MNISTDataModule
+from trainer.module.STNModule_MNIST import STNModule_MNIST
+from trainer.module.STNModuleWmask import STNModuleWmask
+from trainer.data.MNISTDatasetModule import MNISTDatasetModule
+from trainer.data.BlenderDatasetModule import BlenderDatasetModule
 
 MODEL_REGISTRY = {
-    "SpatialTransformerNetwork": STNModule,
+    "SpatialTransformerNetwork": STNModule_MNIST,
+    "SpatialTransformerNetworkWmask": STNModuleWmask,
 }
 DATA_REGISTRY = {
-    "MNIST": MNISTDataModule,
+    "MNIST": MNISTDatasetModule,
+    "BlenderDataset": BlenderDatasetModule,
 }
 
 def get_model(model_cfg: DictConfig, optim_cfg: DictConfig):

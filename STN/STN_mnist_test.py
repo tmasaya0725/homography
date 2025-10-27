@@ -8,7 +8,7 @@ from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
 
-from SpatialTransformerNetwork import SpatialTransformerNetwork
+from homography.trainer.model_module.model.SpatialTransformerNetwork import SpatialTransformerNetwork
 
 from six.moves import urllib
 

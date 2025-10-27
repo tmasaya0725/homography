@@ -13,12 +13,25 @@ class HomographyMNIST(Dataset):
 
     def __getitem__(self, idx):
         img, _ = self.mnist_dataset[idx]  # img: (1, H, W), tensor
-        # num_workers > 0 での非決定性を避けるため、毎回 RandomPerspective を作成
-        homography = K.augmentation.RandomPerspective(distortion_scale=0.75, p=1.0)
-        img_homo = homography(img.unsqueeze(0)).squeeze(0)  # ゆがませた画像
-        return img_homo, img  # (入力, 正解)
+        # 毎回 RandomPerspective を作成しランダムなホモグラフィー変換を適用
+        # homography = K.augmentation.RandomPerspective(distortion_scale=0.75, p=1.0)
+        
+        # homography変換でimgを上下左右反転させる
+        H = torch.tensor([
+            [-1.0, 0.0, img.shape[2]-1.0],
+            [0.0, -1.0, img.shape[1]-1.0],
+            [0.0, 0.0, 1.0]
+        ], dtype=torch.float32)  # (3, 3)
+        H = H.unsqueeze(0)  # (1, 3, 3)
+        img = img.unsqueeze(0)  # (1, 1, H, W)
+        img_homo = K.geometry.transform.warp_perspective(img, H, dsize=(img.shape[3], img.shape[2])).squeeze(0)
+        
+        return {
+            'target': img.squeeze(0),
+            'source': img_homo
+        }
 
-class MNISTDataModule(pl.LightningDataModule):
+class MNISTDatasetModule(pl.LightningDataModule):
     def __init__(self, data_dir: str = "./", batch_size: int = 64, num_workers: int = 4):
         super().__init__()
         self.data_dir = data_dir
@@ -46,12 +59,12 @@ class MNISTDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         # num_workers > 0 でホモグラフィー変換の非決定性が生じるため、0に設定
         return DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True,
-                          num_workers=0, pin_memory=True)
+                          num_workers=4, pin_memory=True)
 
     def val_dataloader(self):
         return DataLoader(self.val_set, batch_size=self.batch_size, shuffle=False,
-                          num_workers=0, pin_memory=True)
+                          num_workers=4, pin_memory=True)
 
     def test_dataloader(self):
         return DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False,
-                          num_workers=0, pin_memory=True)
+                          num_workers=4, pin_memory=True)

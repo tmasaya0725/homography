@@ -52,12 +52,11 @@ class SpatialTransformerNetwork(nn.Module):
 
             self.fc_loc_list.append(fc_loc)
 
-        # 変換の安全範囲（tanh後にスケーリング）
-        # 対角・オフ対角の線形項の最大残差量
-        self.scale_max = scale_max   # diag/off-diag に対する残差のスケール（-2..2）。I+(-2)= -1 で反転が到達可能
-        # 透視成分（下段[2,0],[2,1]）の最大残差
-        self.persp_max = persp_max   # 過度な遠近を抑制
-        # 並進は画像サイズに依存してスケール（-W..W, -H..H が到達可能）
+        # 回転、拡大縮小成分
+        self.scale_max = scale_max   
+        # 透視
+        self.persp_max = persp_max 
+        # 並進
         self.trans_scale = trans_scale
         
     def forward(self, x):
