@@ -4,6 +4,7 @@ import numpy as np
 import random
 import pytorch_lightning as pl
 from torch.utils.data import Dataset, DataLoader
+import json
 
 class BlenderDataset(Dataset):
     def __init__(self, data_dir, type='train', image_size=256):
@@ -13,10 +14,10 @@ class BlenderDataset(Dataset):
         self.mask_path = os.path.join(data_dir, type, 'rendered_image_reflection_mask/')
         self.obj_path = os.path.join(data_dir, type, 'rendered_image_object_mask/')
         self.image_size = image_size
-        
+
         # ファイルリストを取得
         self.data = os.listdir(self.on_path)
-
+        
     def __len__(self):
         return len(self.data)
 
@@ -114,7 +115,7 @@ class BlenderDataset(Dataset):
     
     
 
-class BlenderDatasetModule(pl.LightningDataModule):
+class BlenderDatasetModule_E(pl.LightningDataModule):
     def __init__(self, data_dir: str = "./blender_data/", batch_size: int = 16, num_workers: int = 4, image_size: int = 256):
         super().__init__()
         self.data_dir = data_dir
@@ -143,3 +144,13 @@ class BlenderDatasetModule(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False,
                           num_workers=self.num_workers, pin_memory=True)
+        
+if __name__ == "__main__":
+    dataset = BlenderDataset(data_dir="/home/takanashi.masaya/workspace/dataset/blenderproc_depth_512_E", type='train', image_size=256)
+    print(f"Dataset size: {len(dataset)}")
+    sample = dataset[0]
+    print(f"Sample keys: {sample.keys()}")
+    print(f"Source shape: {sample['source'].shape}")
+    print(f"Target shape: {sample['target'].shape}")
+    print(f"Mask shape: {sample['mask'].shape}")
+    print(f"Ref Mask shape: {sample['ref_mask'].shape}")

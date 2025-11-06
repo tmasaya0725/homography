@@ -3,13 +3,13 @@ import torch.nn as nn
 from omegaconf import DictConfig
 from hydra.utils import instantiate
 import torch
-from .model.SpatialTransformerNetworkWmask import SpatialTransformerNetworkWmask
+from .model.SpatialTransformerNetworkWmaskWdec import SpatialTransformerNetworkWmaskWdec
 
-class STNModuleWmask(pl.LightningModule):
+class STNModuleWmaskWdec(pl.LightningModule):
     def __init__(self, model_cfg: DictConfig, optim_cfg: DictConfig):
         super().__init__()
         self.save_hyperparameters({"model_cfg": model_cfg, "optim_cfg": optim_cfg})
-        self.model = SpatialTransformerNetworkWmask(**model_cfg.params)
+        self.model = SpatialTransformerNetworkWmaskWdec(**model_cfg.params)
         self.criterion = nn.MSELoss()
         self.optim_cfg = optim_cfg
 
@@ -18,14 +18,22 @@ class STNModuleWmask(pl.LightningModule):
 
     def step(self, batch, batch_idx): # train,valの共通のloss計算
         src_img, tgt_img, mask, tgt_mask = batch['source'], batch['target'], batch['mask'], batch['ref_mask']
-        output, output_mask = self(src_img, mask)
-        
+        output, output_mask , rot = self(src_img, mask)
+
         outputWmask = output[:, :3] * output[:, 3:]
         tgtWmask = tgt_img * tgt_mask
 
         loss_img = self.criterion(outputWmask, tgtWmask)
         loss_mask = self.criterion(output[:, 3:], tgt_mask) * 10
-        loss = loss_img + loss_mask
+        # 180の回転するlossを加えてたが原点の回転で画像中心の回転じゃないかもしれない
+        # あｗｄ
+        # loss_rot = torch.min(
+        #     (rot - torch.pi).abs(),
+        #     (rot + torch.pi).abs()
+        # ).mean() * 2.0
+        #print(rot.mean())
+
+        loss = loss_img + loss_mask  #loss_rot
 
         if batch_idx == 0:
             src_img = src_img[:4, :3]

@@ -4,14 +4,17 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 import kornia as K
 import numpy as np
+import math
 
-class SpatialTransformerNetworkWmask(nn.Module):
+class SpatialTransformerNetworkWmaskWdec(nn.Module):
     def __init__(self, num_network=4, 
                  input_channels=1, hidden_layers=[16, 32], 
                  kernel_size=[3, 3], stride=[2, 2], padding=[1, 1],
-                 fc_hidden_size=[32], fc_output_size=8,
+                 fc_hidden_size=[32], fc_output_size=7,
                  scale_max=2.0, persp_max=0.5, trans_scale=1.0):
         super().__init__()
+
+        assert fc_output_size == 7, "fc_output_size must be 7 for WmaskWdec model"
 
         self.encoder_list = nn.ModuleList()
         self.fc_loc_list = nn.ModuleList()
@@ -30,7 +33,8 @@ class SpatialTransformerNetworkWmask(nn.Module):
                     encoder.add_module(f"enc{i+1}_conv{j+1}",
                         nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size[j], padding=padding[j])
                     )
-                encoder.add_module(f'enc{i+1}_act{j+1}', nn.SiLU(True))
+                # encoder.add_module(f'enc{i+1}_ln{j+1}', nn.LayerNorm([out_channels, 1, 1]))
+                encoder.add_module(f'enc{i+1}_act{j+1}', nn.ReLU(True))
             encoder.add_module(f"enc{i+1}_adaptiveavgpool", nn.AdaptiveAvgPool2d((1, 1)))
             self.encoder_list.append(encoder)
 
@@ -61,7 +65,10 @@ class SpatialTransformerNetworkWmask(nn.Module):
         self.trans_scale = trans_scale
         
     def forward(self, x, mask):
-        B, C, H_img, W_img = x.shape
+        B, C, H, W = x.shape
+        center_x = W / 2
+        center_y = H / 2
+
 
         for encoder, fc_loc in zip(self.encoder_list, self.fc_loc_list):
             
@@ -70,35 +77,58 @@ class SpatialTransformerNetworkWmask(nn.Module):
 
             # 8パラメータを出力
             raw = fc_loc(xs)                 # (B, 8)
-            delta = torch.tanh(raw)          # tanhで-1~1に制限（安定化のため）
+            delta =  raw#torch.tanh(raw)          # tanhで-1~1に制限（安定化のため）
 
-            # 残差パラメータをスケーリング
-            # 反射では上下反転が必須なので、y軸のスケール(d)は大きめに設定
-            a = delta[:, 0] * 2.0      # H[0,0] x軸スケール残差（±0.3 -> 0.7~1.3）
-            b = delta[:, 1] * 2.0      # H[0,1] せん断/回転残差
-            c = delta[:, 2] * 2.0      # H[1,0] せん断/回転残差
-            d = delta[:, 3] * 2.0      # H[1,1] y軸スケール残差（±1.0 -> 0~2、反転可能）
-            tx = delta[:, 4] * (W_img * 0.5)  # H[0,2] x方向並進（画像幅の±50%）
-            ty = delta[:, 5] * (H_img * 0.5)  # H[1,2] y方向並進（画像高さの±50%）
-            u = delta[:, 6] * 0.01    # H[2,0] 透視変換（少し大きめ）
-            v = delta[:, 7] * 0.01    # H[2,1] 透視変換
+            rot =  delta[:, 0] * math.pi      # -π ~ π torch.tensor(math.pi) 
+            scale_x = 1.0 + delta[:, 1] * self.scale_max
+            scale_y = 1.0 + delta[:, 2] * self.scale_max
+            trans_x = delta[:, 3] * W * self.trans_scale
+            trans_y = delta[:, 4] * H * self.trans_scale
+            persp_u = delta[:, 5] * self.persp_max
+            persp_v = delta[:, 6] * self.persp_max
 
-            I = torch.eye(3, device=x.device, dtype=x.dtype).unsqueeze(0).repeat(B, 1, 1)
-            I[:, 0, 0] = I[:, 0, 0] + a
-            I[:, 0, 1] = I[:, 0, 1] + b
-            I[:, 1, 0] = I[:, 1, 0] + c
-            I[:, 1, 1] = I[:, 1, 1] + d
-            I[:, 0, 2] = I[:, 0, 2] + tx
-            I[:, 1, 2] = I[:, 1, 2] + ty
-            I[:, 2, 0] = I[:, 2, 0] + u
-            I[:, 2, 1] = I[:, 2, 1] + v
+            # 回転の行列
+            R_matrix = torch.zeros((B, 3, 3), device=x.device, dtype=x.dtype)
+            #print(R_matrix.mean())
+            cos_t = torch.cos(rot)
+            sin_t = torch.sin(rot)
+            R_matrix[:, 0, 0] = cos_t
+            R_matrix[:, 0, 1] = -sin_t
+            R_matrix[:, 1, 0] = sin_t
+            R_matrix[:, 1, 1] = cos_t
+            R_matrix[:, 2, 2] = 1.0
 
-            theta = I
+            # 拡大縮小の行列
+            S_matrix = torch.zeros((B, 3, 3), device=x.device, dtype=x.dtype)
+            S_matrix[:, 0, 0] = scale_x
+            S_matrix[:, 1, 1] = scale_y
+            S_matrix[:, 2, 2] = 1.0
 
-            x = K.geometry.transform.warp_perspective(x, theta, (x.size(3), x.size(2)))
-            mask = K.geometry.transform.warp_perspective(mask, theta, (mask.size(3), mask.size(2)), mode="nearest", padding_mode="zeros")
+            # 並進の行列
+            T_matrix = torch.eye(3, device=x.device, dtype=x.dtype).unsqueeze(0).repeat(B, 1, 1)
+            T_matrix[:, 0, 2] = trans_x
+            T_matrix[:, 1, 2] = trans_y
+            
+            # 透視変換の行列
+            P_matrix = torch.eye(3, device=x.device, dtype=x.dtype).unsqueeze(0).repeat(B, 1, 1)
+            P_matrix[:, 2, 0] = persp_u
+            P_matrix[:, 2, 1] = persp_v
+            
+            # 中心合わせの行列
+            T_center = torch.eye(3, device=x.device, dtype=x.dtype).unsqueeze(0).repeat(B, 1, 1)
+            T_center[:, 0, 2] = center_x
+            T_center[:, 1, 2] = center_y
 
-        return x, mask
+            T_center_inv = torch.eye(3, device=x.device, dtype=x.dtype).unsqueeze(0).repeat(B, 1, 1)
+            T_center_inv[:, 0, 2] = -center_x
+            T_center_inv[:, 1, 2] = -center_y
+            
+            theta = T_matrix.bmm(T_center).bmm(R_matrix).bmm(S_matrix).bmm(P_matrix).bmm(T_center_inv)  # H行列を計算
+
+            x = K.geometry.transform.warp_perspective(x, theta, (W, H))
+            mask = K.geometry.transform.warp_perspective(mask, theta, (W, H), mode="nearest", padding_mode="zeros")
+            
+        return x, mask, rot
     
 import yaml
 from torchsummary import summary

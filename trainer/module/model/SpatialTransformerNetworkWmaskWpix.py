@@ -5,13 +5,15 @@ from torch.utils.tensorboard import SummaryWriter
 import kornia as K
 import numpy as np
 
-class SpatialTransformerNetworkWmask(nn.Module):
+class SpatialTransformerNetworkWmaskWpix(nn.Module):
     def __init__(self, num_network=4, 
                  input_channels=1, hidden_layers=[16, 32], 
                  kernel_size=[3, 3], stride=[2, 2], padding=[1, 1],
                  fc_hidden_size=[32], fc_output_size=8,
                  scale_max=2.0, persp_max=0.5, trans_scale=1.0):
         super().__init__()
+
+        assert fc_output_size == 8, "fc_output_size must be 8 for WmaskWpix model"
 
         self.encoder_list = nn.ModuleList()
         self.fc_loc_list = nn.ModuleList()
@@ -48,17 +50,10 @@ class SpatialTransformerNetworkWmask(nn.Module):
 
             # 残差パラメータ化のため、最終層を初期化
             # std=0.01に増やして、初期状態でも少し変化が起きるようにする
-            nn.init.normal_(fc_loc[-1].weight, mean=0.0, std=0.01)
-            nn.init.zeros_(fc_loc[-1].bias)
+            # nn.init.normal_(fc_loc[-1].weight, mean=0.0, std=0.01)
+            # nn.init.zeros_(fc_loc[-1].bias)
 
             self.fc_loc_list.append(fc_loc)
-
-        # 回転・拡大縮小
-        self.scale_max = scale_max   
-        # 透視
-        self.persp_max = persp_max  
-        # 並進
-        self.trans_scale = trans_scale
         
     def forward(self, x, mask):
         B, C, H_img, W_img = x.shape
@@ -71,33 +66,32 @@ class SpatialTransformerNetworkWmask(nn.Module):
             # 8パラメータを出力
             raw = fc_loc(xs)                 # (B, 8)
             delta = torch.tanh(raw)          # tanhで-1~1に制限（安定化のため）
+            
+            # 出力deltaは4点の変位量(dx, dy)なので、元の座標に加算して変換後の4点を求める
+            # 座標は(x, y)の順で、画像の4隅を表す
+            # 反射のような極端な変形を可能にするため、画像サイズの2倍のスケールを使用
+            H_img_f = float(H_img - 1)  # 高さの最大インデックス
+            W_img_f = float(W_img - 1)  # 幅の最大インデックス
+            
+            # 画像の対角線長をベースに、さらに大きなスケールを設定（2.0倍）
+            # これにより右上の点が右下まで移動可能になる
+            diagonal = (H_img**2 + W_img**2)**0.5
+            scale_factor = diagonal * 2.0  # 対角線の2倍の移動範囲
+            
+            pts1 = torch.tensor([[[0.0, 0.0],              # 左上 (x, y)
+                                  [W_img_f, 0.0],          # 右上
+                                  [W_img_f, H_img_f],      # 右下
+                                  [0.0, H_img_f]]], device=x.device)  # 左下 (1, 4, 2)
+            pts1 = pts1.repeat(B, 1, 1)  # (B, 4, 2)
+            delta_reshaped = delta.view(B, 4, 2) * scale_factor  # (B, 4, 2) スケール適用
+            pts2 = pts1 + delta_reshaped
+            
+            # ホモグラフィ行列を計算
+            H_mat = K.geometry.homography.find_homography_dlt(pts1, pts2)  # (B, 3, 3)
 
-            # 残差パラメータをスケーリング
-            # 反射では上下反転が必須なので、y軸のスケール(d)は大きめに設定
-            a = delta[:, 0] * 2.0      # H[0,0] x軸スケール残差（±0.3 -> 0.7~1.3）
-            b = delta[:, 1] * 2.0      # H[0,1] せん断/回転残差
-            c = delta[:, 2] * 2.0      # H[1,0] せん断/回転残差
-            d = delta[:, 3] * 2.0      # H[1,1] y軸スケール残差（±1.0 -> 0~2、反転可能）
-            tx = delta[:, 4] * (W_img * 0.5)  # H[0,2] x方向並進（画像幅の±50%）
-            ty = delta[:, 5] * (H_img * 0.5)  # H[1,2] y方向並進（画像高さの±50%）
-            u = delta[:, 6] * 0.01    # H[2,0] 透視変換（少し大きめ）
-            v = delta[:, 7] * 0.01    # H[2,1] 透視変換
-
-            I = torch.eye(3, device=x.device, dtype=x.dtype).unsqueeze(0).repeat(B, 1, 1)
-            I[:, 0, 0] = I[:, 0, 0] + a
-            I[:, 0, 1] = I[:, 0, 1] + b
-            I[:, 1, 0] = I[:, 1, 0] + c
-            I[:, 1, 1] = I[:, 1, 1] + d
-            I[:, 0, 2] = I[:, 0, 2] + tx
-            I[:, 1, 2] = I[:, 1, 2] + ty
-            I[:, 2, 0] = I[:, 2, 0] + u
-            I[:, 2, 1] = I[:, 2, 1] + v
-
-            theta = I
-
-            x = K.geometry.transform.warp_perspective(x, theta, (x.size(3), x.size(2)))
-            mask = K.geometry.transform.warp_perspective(mask, theta, (mask.size(3), mask.size(2)), mode="nearest", padding_mode="zeros")
-
+            x = K.geometry.transform.warp_perspective(x, H_mat, (x.size(3), x.size(2)))
+            mask = K.geometry.transform.warp_perspective(mask, H_mat, (mask.size(3), mask.size(2)), mode="nearest", padding_mode="zeros")
+        
         return x, mask
     
 import yaml
@@ -119,3 +113,4 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     summary(model, (1, 28, 28))
+    

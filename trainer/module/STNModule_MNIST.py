@@ -24,26 +24,26 @@ class STNModule_MNIST(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss = self.step(batch, batch_idx)
-        self.log("train/loss", loss)
+        self.log("train/loss", loss, sync_dist=True)
         
         # 画像の可視化
         if batch_idx == 0:
             src_img, tgt_img = batch['source'], batch['target']
             output = self(src_img)
             grid = torch.cat([src_img, output, tgt_img], dim=3)  # 横に結合
-            self.logger.experiment.add_images("train/comparison", grid, self.current_epoch, sync_dist=True)
+            self.logger.experiment.add_images("train/comparison", grid, self.current_epoch)
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
         loss = self.step(batch, batch_idx)
-        self.log("val/loss", loss)
+        self.log("val/loss", loss, sync_dist=True)
         # 画像の可視化
         if batch_idx == 0:
             src_img, tgt_img = batch['source'], batch['target']
             output = self(src_img)
             grid = torch.cat([src_img, output, tgt_img], dim=3)  # 横に結合
-            self.logger.experiment.add_images("val/comparison", grid, self.current_epoch, sync_dist=True)
+            self.logger.experiment.add_images("val/comparison", grid, self.current_epoch)
         return loss
 
     def configure_optimizers(self):

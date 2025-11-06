@@ -31,7 +31,7 @@ class SpatialTransformerNetwork(nn.Module):
                         nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size[j], padding=padding[j])
                     )
                 encoder.add_module(f'enc{i+1}_act{j+1}', nn.SiLU(True))
-            encoder.add_module(f"enc{i+1}_adaptiveavgpool", nn.AdaptiveAvgPool2d((1, 1)))
+            # encoder.add_module(f"enc{i+1}_adaptiveavgpool", nn.AdaptiveAvgPool2d((1, 1)))
             self.encoder_list.append(encoder)
 
             # homography変換のパラメータ（8自由度：H[2,2]=1に固定）を出力するための全結合層

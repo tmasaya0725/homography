@@ -22,17 +22,24 @@ def train_from_checkpoint(checkpoint_path: str):
     # チェックポイントのディレクトリ構造: .../outputs/YYYY-MM-DD/HH-MM-SS/checkpoints/xxx.ckpt
     checkpoint_dir = checkpoint_path.parent  # checkpointsディレクトリ
     output_dir = checkpoint_dir.parent  # outputs/YYYY-MM-DD/HH-MM-SS
-    hydra_config_path = output_dir / ".hydra" / "config.yaml"
+    saved_config_path = output_dir / ".hydra" / "config.yaml"
     
-    if not hydra_config_path.exists():
-        raise FileNotFoundError(f"保存された設定ファイルが見つかりません: {hydra_config_path}")
+    if not saved_config_path.exists():
+        raise FileNotFoundError(f"保存された設定ファイルが見つかりません: {saved_config_path}")
     
     print(f"チェックポイントから学習を再開します: {checkpoint_path}")
-    print(f"設定ファイルを読み込みます: {hydra_config_path}")
     print(f"ログディレクトリ: {output_dir}")
     
-    # 保存された設定を読み込む
-    cfg = OmegaConf.load(hydra_config_path)
+    # 最新のconfig.yamlを読み込む（max_epochなどの更新を反映するため）
+    current_config_path = CONFIG_DIR / "config.yaml"
+    cfg = OmegaConf.load(current_config_path)
+    print(f"最新の設定ファイルを読み込みます: {current_config_path}")
+    
+    # 保存されていた設定も読み込んで、必要に応じて参照
+    saved_cfg = OmegaConf.load(saved_config_path)
+    print(f"保存されていた設定ファイル: {saved_config_path}")
+    print(f"  - 保存時のmax_epochs: {saved_cfg.trainer.get('max_epochs', 'N/A')}")
+    print(f"  - 現在のmax_epochs: {cfg.trainer.get('max_epochs', 'N/A')}")
     
     pl.seed_everything(cfg.get("seed", 42), workers=True)
     
@@ -56,7 +63,7 @@ def train_from_checkpoint(checkpoint_path: str):
         logger = True
     
     # チェックポイントから直接モデルをロード
-    from util.util import MODEL_REGISTRY
+    from trainer.util.util import MODEL_REGISTRY
     ModelClass = MODEL_REGISTRY[cfg.model.type]
     model = ModelClass.load_from_checkpoint(str(checkpoint_path))
     print(f"保存されていたハイパーパラメータ: {model.hparams}")

@@ -14,20 +14,21 @@ class HomographyMNIST(Dataset):
     def __getitem__(self, idx):
         img, _ = self.mnist_dataset[idx]  # img: (1, H, W), tensor
         # 毎回 RandomPerspective を作成しランダムなホモグラフィー変換を適用
-        # homography = K.augmentation.RandomPerspective(distortion_scale=0.75, p=1.0)
+        homography = K.augmentation.RandomPerspective(distortion_scale=0.75, p=1.0)
+        img_homo = homography(img.unsqueeze(0)).squeeze(0)
         
         # homography変換でimgを上下左右反転させる
-        H = torch.tensor([
-            [-1.0, 0.0, img.shape[2]-1.0],
-            [0.0, -1.0, img.shape[1]-1.0],
-            [0.0, 0.0, 1.0]
-        ], dtype=torch.float32)  # (3, 3)
-        H = H.unsqueeze(0)  # (1, 3, 3)
-        img = img.unsqueeze(0)  # (1, 1, H, W)
-        img_homo = K.geometry.transform.warp_perspective(img, H, dsize=(img.shape[3], img.shape[2])).squeeze(0)
+        # H = torch.tensor([
+        #     [-1.0, 0.0, img.shape[2]-1.0],
+        #     [0.0, -1.0, img.shape[1]-1.0],
+        #     [0.0, 0.0, 1.0]
+        # ], dtype=torch.float32)  # (3, 3)
+        # H = H.unsqueeze(0)  # (1, 3, 3)
+        # img = img.unsqueeze(0)  # (1, 1, H, W)
+        # img_homo = K.geometry.transform.warp_perspective(img, H, dsize=(img.shape[3], img.shape[2])).squeeze(0)
         
         return {
-            'target': img.squeeze(0),
+            'target': img,
             'source': img_homo
         }
 
