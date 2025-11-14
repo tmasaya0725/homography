@@ -115,12 +115,14 @@ class BlenderDataset(Dataset):
     
 
 class BlenderDatasetModule(pl.LightningDataModule):
-    def __init__(self, data_dir: str = "./blender_data/", batch_size: int = 16, num_workers: int = 4, image_size: int = 256):
+    def __init__(self, data_dir: str = "./blender_data/", batch_size: int = 16, num_workers: int = 4, image_size: int = 256, limit_samples: int | None = None):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.image_size = image_size
+        # デバッグ・検証用: データセットの件数を制限（例: 1 で1枚だけ）
+        self.limit_samples = limit_samples
 
     def prepare_data(self):
         assert os.path.exists(self.data_dir), f"Data directory {self.data_dir} does not exist"
@@ -129,8 +131,18 @@ class BlenderDatasetModule(pl.LightningDataModule):
         if stage == 'fit' or stage is None:
             self.train_set = BlenderDataset(self.data_dir, type='train', image_size=self.image_size)
             self.val_set = BlenderDataset(self.data_dir, type='validation', image_size=self.image_size)
+            if self.limit_samples is not None:
+                from torch.utils.data import Subset
+                n_train = min(self.limit_samples, len(self.train_set))
+                n_val = min(self.limit_samples, len(self.val_set))
+                self.train_set = Subset(self.train_set, list(range(n_train)))
+                self.val_set = Subset(self.val_set, list(range(n_val)))
         if stage == 'test' or stage is None:
             self.test_set = BlenderDataset(self.data_dir, type='test', image_size=self.image_size)
+            if self.limit_samples is not None:
+                from torch.utils.data import Subset
+                n_test = min(self.limit_samples, len(self.test_set))
+                self.test_set = Subset(self.test_set, list(range(n_test)))
 
     def train_dataloader(self):
         return DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True,

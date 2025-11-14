@@ -1,6 +1,7 @@
 from omegaconf import DictConfig
 from trainer.module.STNModule_MNIST import STNModule_MNIST
 from trainer.module.STNModuleWmask import STNModuleWmask
+from trainer.module.STNModuleWmaskWaffine import STNModuleWmaskWaffine
 from trainer.module.STNModuleWmaskWdec import STNModuleWmaskWdec
 from trainer.module.STNModuleWmaskWpix import STNModuleWmaskWpix
 from trainer.data.MNISTDatasetModule import MNISTDatasetModule
@@ -12,7 +13,8 @@ MODEL_REGISTRY = {
     "SpatialTransformerNetworkWmask": STNModuleWmask,
     "SpatialTransformerNetworkWmaskWdec": STNModuleWmaskWdec,
     "SpatialTransformerNetworkWmaskWpix": STNModuleWmaskWpix,
-}
+    "SpatialTransformerNetworkWmaskWaffine": STNModuleWmaskWaffine,
+}   
 DATA_REGISTRY = {
     "MNIST": MNISTDatasetModule,
     "BlenderDataset": BlenderDatasetModule,

@@ -33,7 +33,6 @@ class SpatialTransformerNetworkWmaskWdec(nn.Module):
                     encoder.add_module(f"enc{i+1}_conv{j+1}",
                         nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size[j], padding=padding[j])
                     )
-                # encoder.add_module(f'enc{i+1}_ln{j+1}', nn.LayerNorm([out_channels, 1, 1]))
                 encoder.add_module(f'enc{i+1}_act{j+1}', nn.ReLU(True))
             encoder.add_module(f"enc{i+1}_adaptiveavgpool", nn.AdaptiveAvgPool2d((1, 1)))
             self.encoder_list.append(encoder)
@@ -64,7 +63,7 @@ class SpatialTransformerNetworkWmaskWdec(nn.Module):
         # 並進
         self.trans_scale = trans_scale
         
-    def forward(self, x, mask):
+    def forward(self, x):
         B, C, H, W = x.shape
         center_x = W / 2
         center_y = H / 2
@@ -77,9 +76,9 @@ class SpatialTransformerNetworkWmaskWdec(nn.Module):
 
             # 8パラメータを出力
             raw = fc_loc(xs)                 # (B, 8)
-            delta =  raw#torch.tanh(raw)          # tanhで-1~1に制限（安定化のため）
+            delta = torch.tanh(raw)          # tanhで-1~1に制限（安定化のため）
 
-            rot =  delta[:, 0] * math.pi      # -π ~ π torch.tensor(math.pi) 
+            rot =  torch.tensor(math.pi) * delta[:, 0]         # -π ~ π
             scale_x = 1.0 + delta[:, 1] * self.scale_max
             scale_y = 1.0 + delta[:, 2] * self.scale_max
             trans_x = delta[:, 3] * W * self.trans_scale
@@ -123,13 +122,12 @@ class SpatialTransformerNetworkWmaskWdec(nn.Module):
             T_center_inv[:, 0, 2] = -center_x
             T_center_inv[:, 1, 2] = -center_y
             
-            theta = T_matrix.bmm(T_center).bmm(R_matrix).bmm(S_matrix).bmm(P_matrix).bmm(T_center_inv)  # H行列を計算
+            theta = T_matrix.bmm(T_center).bmm(P_matrix).bmm(S_matrix).bmm(R_matrix).bmm(T_center_inv)  # H行列を計算
 
             x = K.geometry.transform.warp_perspective(x, theta, (W, H))
-            mask = K.geometry.transform.warp_perspective(mask, theta, (W, H), mode="nearest", padding_mode="zeros")
-            
-        return x, mask, rot
-    
+
+        return x, rot
+
 import yaml
 from torchsummary import summary
 

@@ -4,13 +4,13 @@ from omegaconf import DictConfig
 from hydra.utils import instantiate
 import torch
 import torch.nn.functional as F
-from .model.SpatialTransformerNetworkWmaskWdec import SpatialTransformerNetworkWmaskWdec
+from .model.SpatialTransformerNetworkWmaskWaffine import SpatialTransformerNetworkWmaskWaffine
 
-class STNModuleWmaskWdec(pl.LightningModule):
+class STNModuleWmaskWaffine(pl.LightningModule):
     def __init__(self, model_cfg: DictConfig, optim_cfg: DictConfig):
         super().__init__()
         self.save_hyperparameters({"model_cfg": model_cfg, "optim_cfg": optim_cfg})
-        self.model = SpatialTransformerNetworkWmaskWdec(**model_cfg.params)
+        self.model = SpatialTransformerNetworkWmaskWaffine(**model_cfg.params)
         self.criterion = nn.MSELoss()
         self.optim_cfg = optim_cfg
 
@@ -19,15 +19,16 @@ class STNModuleWmaskWdec(pl.LightningModule):
 
     def step(self, batch, batch_idx): # train,valの共通のloss計算
         src_img, tgt_img, src_mask, tgt_mask = batch['source'], batch['target'], batch['mask'], batch['ref_mask']
-        output, rot = self(src_img)
+        output = self(src_img)
         
         comp = output[:, :3]*output[:, 3:] + src_img[:, :3]*(1 - output[:, 3:])
+        # マスク画像
 
         loss_img = self.criterion(output[:, :3]*output[:, 3:], tgt_img*tgt_mask)
         
         loss_mask = self.criterion(output[:, 3:], tgt_mask)
         
-        loss = loss_img + loss_mask
+        loss = loss_mask + loss_img
 
         if batch_idx == 0:
             for name, param in self.model.named_parameters():

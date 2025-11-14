@@ -22,18 +22,27 @@ class BlenderDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        filename = self.data[idx]
+        # filename = self.data[idx]
+        # 仮
+        if self.type == 'train':
+            if idx == 0:
+                filename = "render_6.png"
+            else:
+                filename = self.data[idx]
+        else:
+            filename = self.data[idx]
 
+        
         # 各フォルダから画像を読み込む
         source = cv2.imread(os.path.join(self.off_path, filename))
         mask = cv2.imread(os.path.join(self.obj_path, filename), cv2.IMREAD_GRAYSCALE)
         target = cv2.imread(os.path.join(self.on_path, filename))
         ref_mask = cv2.imread(os.path.join(self.mask_path, filename), cv2.IMREAD_GRAYSCALE)
         
-        if self.type == 'train':
+        if False:#self.type == 'train':
             # 訓練時はランダムクロップとフリップ
             height, width = target.shape[:2]
-            crop_size = random.randint(384, 384)
+            crop_size = random.randint(256, 400)
             crop_positions = self._get_random_crop_positions(width, height, crop_size)
             
             target = self._crop_image(target, crop_positions)
@@ -49,7 +58,7 @@ class BlenderDataset(Dataset):
                 ref_mask = cv2.flip(ref_mask, 1)
         else:
             # 検証・テスト時はセンタークロップ
-            crop_size = random.randint(self.image_size, min(source.shape[0], source.shape[1]))
+            crop_size = 256#random.randint(self.image_size, min(source.shape[0], source.shape[1]))
             source = self._center_crop(source, crop_size)
             target = self._center_crop(target, crop_size)
             mask = self._center_crop(mask, crop_size)
@@ -116,12 +125,14 @@ class BlenderDataset(Dataset):
     
 
 class BlenderDatasetModule_E(pl.LightningDataModule):
-    def __init__(self, data_dir: str = "./blender_data/", batch_size: int = 16, num_workers: int = 4, image_size: int = 256):
+    def __init__(self, data_dir: str = "./blender_data/", batch_size: int = 16, num_workers: int = 4, image_size: int = 256, limit_samples: int | None = None):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.image_size = image_size
+        # デバッグ・検証用: データセットの件数を制限（例: 1 で1枚だけ）
+        self.limit_samples = limit_samples
 
     def prepare_data(self):
         assert os.path.exists(self.data_dir), f"Data directory {self.data_dir} does not exist"
@@ -130,11 +141,21 @@ class BlenderDatasetModule_E(pl.LightningDataModule):
         if stage == 'fit' or stage is None:
             self.train_set = BlenderDataset(self.data_dir, type='train', image_size=self.image_size)
             self.val_set = BlenderDataset(self.data_dir, type='validation', image_size=self.image_size)
+            if self.limit_samples is not None:
+                from torch.utils.data import Subset
+                n_train = min(self.limit_samples, len(self.train_set))
+                n_val = min(self.limit_samples, len(self.val_set))
+                self.train_set = Subset(self.train_set, list(range(n_train)))
+                self.val_set = Subset(self.val_set, list(range(n_val)))
         if stage == 'test' or stage is None:
             self.test_set = BlenderDataset(self.data_dir, type='test', image_size=self.image_size)
+            if self.limit_samples is not None:
+                from torch.utils.data import Subset
+                n_test = min(self.limit_samples, len(self.test_set))
+                self.test_set = Subset(self.test_set, list(range(n_test)))
 
     def train_dataloader(self):
-        return DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True,
+        return DataLoader(self.train_set, batch_size=self.batch_size, shuffle=False,
                           num_workers=self.num_workers, pin_memory=True)
 
     def val_dataloader(self):
