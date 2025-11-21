@@ -13,6 +13,7 @@ class BlenderDataset(Dataset):
         self.off_path = os.path.join(data_dir, type, 'rendered_image_no_reflection/')
         self.mask_path = os.path.join(data_dir, type, 'rendered_image_reflection_mask/')
         self.obj_path = os.path.join(data_dir, type, 'rendered_image_object_mask/')
+        self.normals_path = os.path.join(data_dir, type, 'normals_image/')
         self.image_size = image_size
 
         # ファイルリストを取得
@@ -34,12 +35,12 @@ class BlenderDataset(Dataset):
 
         
         # 各フォルダから画像を読み込む
-        source = cv2.imread(os.path.join(self.off_path, filename))
+        source = cv2.imread(os.path.join(self.normals_path, filename))
         mask = cv2.imread(os.path.join(self.obj_path, filename), cv2.IMREAD_GRAYSCALE)
         target = cv2.imread(os.path.join(self.on_path, filename))
         ref_mask = cv2.imread(os.path.join(self.mask_path, filename), cv2.IMREAD_GRAYSCALE)
         
-        if self.type == 'train':
+        if False:# self.type == 'train':
             target, source, mask, ref_mask = self._crop_until_masks_inside(
                 target, source, mask, ref_mask,
                 crop_size_min=256, crop_size_max=350, max_attempts=20

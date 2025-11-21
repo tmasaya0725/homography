@@ -119,6 +119,8 @@ class SpatialTransformerNetworkWmaskWaffine(nn.Module):
             
             xs_mask = x[:, 3:, :, :]
             x_coords, y_coords = self.get_object_sentric_coordinates(xs_mask)
+            # x_coords = torch.full((B,), (W_img - 1) / 2.0, device=x.device, dtype=x.dtype)
+            # y_coords = torch.full((B,), (H_img - 1) / 2.0, device=x.device, dtype=x.dtype)
             
             T_center = torch.zeros(B, 3, 3).to(x.device)
             T_center[:, 0, 0] = 1.0
@@ -141,8 +143,8 @@ class SpatialTransformerNetworkWmaskWaffine(nn.Module):
             theta = fc_loc(xs)                 # (B, 8)
             theta = torch.tanh(theta)
             
-            m = torch.tan(theta[:, 0] * math.pi)
-            c = theta[:, 1] * 255.0
+            m = torch.tan(theta[:, 0] * math.pi / 2.0)
+            c = theta[:, 1] * 127.0
 
             A = torch.zeros(B, 3, 3).to(x.device)
             A[:, 0, 0] = (1-m*m)/(1+m*m)
